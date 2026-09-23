@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Dielektrik kırılma modeliyle üretilen yıldırımlar, geometriden sentezlenen gök gürültüsü ve gerçek zamanlı gece fırtınası.">
+<title>Yıldırım Gözlemevi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="i-replay" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4.5v15a1 1 0 0 0 1.5.86l12.2-7.5a1 1 0 0 0 0-1.72L7.5 3.64A1 1 0 0 0 6 4.5z"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></symbol>
+</svg>
+
+<canvas id="sahne" role="img" aria-label="Göl kıyısından gece fırtınası: bulutlar, yağmur, köy ışıkları ve radyo kulesi. Sahneye tıklandığında o noktaya yıldırım düşer."></canvas>
+<div id="nisan" class="reticle" aria-hidden="true"></div>
+
+<div class="ui" id="arayuz">
+  <header class="brand">
+    <p class="brand__eyebrow">Gece fırtınası · dielektrik kırılma modeli</p>
+    <h1 class="brand__title">Yıldırım Gözlemevi</h1>
+  </header>
+
+  <section class="hud glass" aria-label="Ölçüm cihazı">
+    <div class="hud__row">
+      <span class="phase" id="evre" data-phase="sakin"><span class="phase__dot" aria-hidden="true"></span><span class="phase__label" id="evre-ad">Sakin</span></span>
+      <span class="badge" id="tekrar-rozeti" hidden>Yavaş çekim tekrarı</span>
+    </div>
+    <dl class="readout">
+      <div><dt>Zaman</dt><dd class="mono" id="zaman-kodu">—</dd></div>
+      <div><dt>Hız</dt><dd class="mono" id="hiz-etiketi">×1</dd></div>
+      <div title="Yüksek hızlı kamera eşdeğeri: ekran kare hızı ÷ zaman ölçeği"><dt>Kare/sn</dt><dd class="mono" id="kare-hizi">60</dd></div>
+    </dl>
+    <figure class="curve">
+      <canvas id="isik-egrisi" width="300" height="84" role="img" aria-label="Son olayın ışık eğrisi: zamana karşı logaritmik parlaklık. Tepeler dönüş darbeleridir."></canvas>
+      <figcaption><span>Işık eğrisi</span><span class="mono" id="egri-olcek">0–400 ms · log</span></figcaption>
+    </figure>
+  </section>
+
+  <section class="stats glass" id="son-cakis" aria-labelledby="son-cakis-baslik" hidden>
+    <div class="stats__head">
+      <h2 class="stats__title" id="son-cakis-baslik">Son çakış</h2>
+      <span class="chip" id="cakis-yeri">—</span>
+    </div>
+    <p class="stats__kind" id="cakis-turu" aria-live="polite">—</p>
+    <dl class="stats__grid" id="cakis-degerleri"></dl>
+    <div class="thunder" id="gok-gurultusu">
+      <div class="thunder__row"><span id="gg-metin">Gök gürültüsü bekleniyor</span><span class="mono" id="gg-sure"></span></div>
+      <div class="thunder__bar" aria-hidden="true"><span id="gg-cubuk"></span></div>
+      <p class="thunder__note" id="gg-not"></p>
+    </div>
+  </section>
+
+  <aside class="panel glass" id="ayarlar" aria-labelledby="ayarlar-baslik" hidden>
+    <div class="panel__head">
+      <h2 id="ayarlar-baslik">Ayarlar</h2>
+      <button class="icon-btn" type="button" id="ayarlar-kapat" aria-label="Ayarları kapat"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="panel__body">
+      <fieldset class="field">
+        <legend>Yıldırım türü</legend>
+        <div class="segmented" role="radiogroup" id="tur-secimi">
+          <label><input type="radio" name="tur" value="karisik" checked><span>Karışık</span></label>
+          <label><input type="radio" name="tur" value="cg"><span>Negatif</span></label>
+          <label><input type="radio" name="tur" value="cgp"><span>Pozitif</span></label>
+          <label><input type="radio" name="tur" value="ic"><span>Bulut içi</span></label>
+          <label><input type="radio" name="tur" value="spider"><span>Örümcek</span></label>
+        </div>
+        <p class="help" id="tur-aciklama">Doğadaki karışım: çoğu bulut içi, bir kısmı buluttan yere.</p>
+      </fieldset>
+
+      <div class="field">
+        <div class="field__label"><label for="dallanma">Dallanma (<span class="nt">η</span>)</label><output class="mono" for="dallanma" id="dallanma-deger">1,7</output></div>
+        <input type="range" id="dallanma" min="1.2" max="4" step="0.1" value="1.7" aria-describedby="dallanma-yardim">
+        <p class="help" id="dallanma-yardim">Düşük η daha çok dal üretir. Yeni ayar sonraki yıldırımlarda geçerli olur.</p>
+      </div>
+
+      <div class="field">
+        <div class="field__label"><label for="siddet">Fırtına şiddeti</label><output class="mono" for="siddet" id="siddet-deger">7/dk</output></div>
+        <input type="range" id="siddet" min="0" max="30" step="1" value="7">
+        <div class="switch-row">
+          <span id="otomatik-etiket">Otomatik fırtına</span>
+          <button type="button" class="switch" role="switch" aria-checked="true" id="otomatik" aria-labelledby="otomatik-etiket"><span></span></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field__label"><label for="yagmur">Yağmur</label><output class="mono" for="yagmur" id="yagmur-deger">%65</output></div>
+        <input type="range" id="yagmur" min="0" max="100" step="1" value="65">
+      </div>
+
+      <div class="field">
+        <div class="field__label"><label for="zaman-olcegi">Zaman ölçeği</label><output class="mono" for="zaman-olcegi" id="zaman-deger">×1</output></div>
+        <input type="range" id="zaman-olcegi" min="0" max="1000" step="1" value="0" aria-describedby="zaman-yardim">
+        <div class="presets" role="group" aria-label="Zaman ölçeği hazır ayarları">
+          <button type="button" data-scale="1">Gerçek</button>
+          <button type="button" data-scale="100">1/100</button>
+          <button type="button" data-scale="1000">1/1.000</button>
+          <button type="button" data-scale="10000">1/10.000</button>
+        </div>
+        <p class="help" id="zaman-yardim">Basamaklı öncü 20–35 ms, dönüş darbesi yaklaşık 100 µs sürer. Yavaş çekimde gök gürültüsü çalmaz.</p>
+      </div>
+
+      <div class="field">
+        <div class="field__label"><label for="ses-duzeyi">Ses düzeyi</label><output class="mono" for="ses-duzeyi" id="ses-deger">%80</output></div>
+        <input type="range" id="ses-duzeyi" min="0" max="100" step="1" value="80">
+      </div>
+
+      <div class="field">
+        <div class="field__label"><label for="parlaklik">Pozlama</label><output class="mono" for="parlaklik" id="parlaklik-deger">0 EV</output></div>
+        <input type="range" id="parlaklik" min="-2" max="2" step="0.1" value="0">
+      </div>
+
+      <div class="field">
+        <div class="switch-row">
+          <span id="yumusak-etiket">Yumuşak parlama</span>
+          <button type="button" class="switch" role="switch" aria-checked="false" id="yumusak" aria-labelledby="yumusak-etiket" aria-describedby="yumusak-yardim"><span></span></button>
+        </div>
+        <p class="help" id="yumusak-yardim">Ani parlaklık değişimlerini süzer, çok darbeli çakışları tek yumuşak ışımaya dönüştürür.</p>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="kalite">Görüntü kalitesi</label>
+        <select id="kalite">
+          <option value="auto" selected>Otomatik</option>
+          <option value="0">Düşük</option>
+          <option value="1">Orta</option>
+          <option value="2">Yüksek</option>
+          <option value="3">En yüksek</option>
+        </select>
+      </div>
+
+      <div class="field keys">
+        <h3><svg aria-hidden="true"><use href="#i-keyboard"/></svg>Kısayollar</h3>
+        <ul>
+          <li><kbd>Boşluk</kbd> Yıldırım düşür</li>
+          <li><kbd>R</kbd> Yavaş çekim tekrar</li>
+          <li><kbd>P</kbd> Duraklat</li>
+          <li><kbd>M</kbd> Ses</li>
+          <li><kbd>H</kbd> Arayüzü gizle</li>
+          <li><kbd>F</kbd> Tam ekran</li>
+          <li><kbd>1</kbd>–<kbd>5</kbd> Tür seç</li>
+          <li><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> Bakış</li>
+        </ul>
+      </div>
+    </div>
+  </aside>
+
+  <nav class="actions" aria-label="Eylemler">
+    <button type="button" class="btn btn--primary" id="dusur"><svg aria-hidden="true"><use href="#i-zap"/></svg><span>Yıldırım düşür</span><kbd>Boşluk</kbd></button>
+    <button type="button" class="btn" id="tekrar" disabled><svg aria-hidden="true"><use href="#i-replay"/></svg><span>Yavaş çekim</span><kbd>R</kbd></button>
+    <div class="actions__icons">
+      <button type="button" class="icon-btn" id="duraklat" aria-label="Duraklat" aria-pressed="false" title="Duraklat (P)"><svg aria-hidden="true"><use href="#i-pause"/></svg></button>
+      <button type="button" class="icon-btn" id="ses" aria-label="Sesi kapat" aria-pressed="false" title="Ses (M)"><svg aria-hidden="true"><use href="#i-volume"/></svg></button>
+      <button type="button" class="icon-btn" id="ayarlar-ac" aria-label="Ayarlar" aria-expanded="false" aria-controls="ayarlar" title="Ayarlar"><svg aria-hidden="true"><use href="#i-sliders"/></svg></button>
+      <button type="button" class="icon-btn" id="gizle" aria-label="Arayüzü gizle" title="Arayüzü gizle (H)"><svg aria-hidden="true"><use href="#i-eye-off"/></svg></button>
+      <button type="button" class="icon-btn" id="tam-ekran" aria-label="Tam ekran" title="Tam ekran (F)"><svg aria-hidden="true"><use href="#i-expand"/></svg></button>
+    </div>
+  </nav>
+
+  <p class="hint" id="ipucu">Sahneye tıkla: o noktaya yıldırım düşer · Sürükle: etrafa bak · Tekerlek: yakınlaştır</p>
+</div>
+
+<button type="button" class="show-ui" id="goster" hidden>Arayüzü göster <kbd>H</kbd></button>
+<div class="toast" id="bildirim" role="status" aria-live="polite" hidden></div>
+
+<div class="gate" id="baslangic" role="dialog" aria-modal="true" aria-labelledby="baslangic-baslik" aria-describedby="baslangic-aciklama">
+  <div class="gate__card">
+    <p class="gate__eyebrow">Etkileşimli fırtına simülasyonu</p>
+    <h2 class="gate__title" id="baslangic-baslik">Yıldırım Gözlemevi</h2>
+    <p class="gate__lead" id="baslangic-aciklama">Her yıldırım dielektrik kırılma modeliyle yeniden hesaplanır. Öncü kanal buluttan basamak basamak iner, yerden yükselen bağlantı öncüsüyle birleşir. Ardından dönüş darbesi, ışık hızının üçte biriyle yukarı doğru kanalı aydınlatır. Gök gürültüsü kanalın gerçek geometrisinden sentezlenir ve sana ses hızıyla ulaşır.</p>
+    <div class="warning" role="note">
+      <svg aria-hidden="true"><use href="#i-alert"/></svg>
+      <p><strong>Işığa duyarlılık uyarısı.</strong> Simülasyon ani, parlak ve yanıp sönen ışıklar içerir. Işığa duyarlı epilepsi öykün varsa yumuşak parlama modunu açık tut.</p>
+    </div>
+    <div class="gate__options">
+      <div class="switch-row">
+        <span id="gate-yumusak-etiket">Yumuşak parlama</span>
+        <button type="button" class="switch" role="switch" aria-checked="false" id="gate-yumusak" aria-labelledby="gate-yumusak-etiket"><span></span></button>
+      </div>
+      <div class="switch-row">
+        <span id="gate-ses-etiket">Ses</span>
+        <button type="button" class="switch" role="switch" aria-checked="true" id="gate-ses" aria-labelledby="gate-ses-etiket"><span></span></button>
+      </div>
+    </div>
+    <button type="button" class="btn btn--primary btn--wide" id="baslat"><svg aria-hidden="true"><use href="#i-zap"/></svg><span>Fırtınayı başlat</span></button>
+    <p class="gate__note"><svg aria-hidden="true"><use href="#i-headphones"/></svg>Kulaklıkla dinlemen önerilir; uzak gök gürültüsü çok alçak frekanslıdır.</p>
+  </div>
+</div>
+
+<div id="hata" class="fatal" role="alert" hidden>
+  <div class="fatal__card">
+    <h2 data-hata-baslik></h2>
+    <pre data-hata-ayrinti></pre>
+  </div>
+</div>
+
+<script src="js/core/math.js"></script>
+<script src="js/core/gl.js"></script>
+<script src="js/sim/dbm.js"></script>
+<script src="js/sim/luminosity.js"></script>
+<script src="js/audio/thunder.js"></script>
+<script src="js/audio/audio.js"></script>
+<script src="js/world/terrain.js"></script>
+<script src="js/render/shaders.js"></script>
+<script src="js/render/renderer.js"></script>
+<script src="js/sim/storm.js"></script>
+<script src="js/ui/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
