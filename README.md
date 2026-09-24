@@ -28,7 +28,9 @@ Tarayıcıda çalışan, fiziğe dayalı bir gece fırtınası ve yıldırım si
 | Tür seç | 1 Karışık, 2 Negatif, 3 Pozitif, 4 Bulut içi, 5 Örümcek |
 
 Işığa duyarlılık: simülasyon ani ve parlak ışıklar içerir. Ayarlardaki **Yumuşak parlama** modu ani parlaklık
-değişimlerini süzer; işletim sisteminde "hareketi azalt" açıksa varsayılan olarak açılır.
+değişimlerini süzer ve ışığın yükselme hızını sınırlar; işletim sisteminde "hareketi azalt" açıksa varsayılan
+olarak açılır. Senin düşürdüğün yıldırımlar en az 0,4 sn (yumuşak modda 3 sn) arayla düşer; basılı tutulan tuş
+yıldırım yağdırmaz.
 
 ## Geliştirme
 

@@ -114,7 +114,7 @@
           <button type="button" data-scale="1000">1/1.000</button>
           <button type="button" data-scale="10000">1/10.000</button>
         </div>
-        <p class="help" id="zaman-yardim">Basamaklı öncü 20–35 ms, dönüş darbesi yaklaşık 100 µs sürer. Yavaş çekimde gök gürültüsü çalmaz.</p>
+        <p class="help" id="zaman-yardim">Basamaklı öncü 15–40 ms (pozitif yıldırımda 25–70 ms), dönüş darbesi yaklaşık 100 µs sürer. Yavaş çekimde gök gürültüsü çalmaz.</p>
       </div>
 
       <div class="field">
@@ -187,7 +187,7 @@
     <p class="gate__lead" id="baslangic-aciklama">Her yıldırım dielektrik kırılma modeliyle yeniden hesaplanır. Öncü kanal buluttan basamak basamak iner, yerden yükselen bağlantı öncüsüyle birleşir. Ardından dönüş darbesi, ışık hızının üçte biriyle yukarı doğru kanalı aydınlatır. Gök gürültüsü kanalın gerçek geometrisinden sentezlenir ve sana ses hızıyla ulaşır.</p>
     <div class="warning" role="note">
       <svg aria-hidden="true"><use href="#i-alert"/></svg>
-      <p><strong>Işığa duyarlılık uyarısı.</strong> Simülasyon ani, parlak ve yanıp sönen ışıklar içerir. Işığa duyarlı epilepsi öykün varsa yumuşak parlama modunu açık tut.</p>
+      <p><strong>Işığa duyarlılık uyarısı.</strong> Simülasyon ani, parlak ve yanıp sönen ışıklar içerir. Işığa duyarlı epilepsi öykün varsa başlamadan önce aşağıdaki yumuşak parlama modunu aç.</p>
     </div>
     <div class="gate__options">
       <div class="switch-row">
@@ -208,6 +208,7 @@
   <div class="fatal__card">
     <h2 data-hata-baslik></h2>
     <pre data-hata-ayrinti></pre>
+    <button type="button" class="btn" data-hata-yukle><svg aria-hidden="true"><use href="#i-replay"/></svg><span>Sayfayı yeniden yükle</span></button>
   </div>
 </div>
 

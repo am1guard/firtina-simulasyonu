@@ -67,14 +67,32 @@ self.onmessage = function (e) {
       this.lights = { pos: new Float32Array(64), col: new Float32Array(64), n: 0, nCloud: 0 };
       this.flashSky = [0, 0, 0];
       this.flashLevel = 0;
+      this.nearFlash = 0;
+      this.adapt = 1;
+      // Yumuşak kipte toplam ışık çıkışı saniyede en fazla e^4 kat yükselir (60 kare/sn'de kare başına %7).
+      // 0,04 altı (I_REF'in %4'ü) sahnede fark edilmeyecek kadar sönük olduğundan serbest bırakılır.
+      this.softLimiter = new Lum.RiseLimiter(4, 0.04);
+      this.softGain = 1;
+      this.lastUserStrike = -Infinity;
       this._cand = [];
       this._out = { hot: 0, leader: 0, cc: 0 };
-      this.worker = o.noWorker ? null : makeWorker();
-      if (this.worker) {
-        this.worker.onmessage = (e) => this.onWorker(e.data);
-        this.worker.onerror = () => { this.worker = null; this.fillQueues(); };
-      }
       this.simT = 0; this.wallT = 0; this.timeScale = 1;
+      this.worker = null;
+      if (!o.noWorker) { const w = makeWorker(); if (w) this.attachWorker(w); }
+      this.fillQueues();
+    }
+
+    attachWorker(w) {
+      this.worker = w;
+      w.onmessage = (e) => this.onWorker(e.data);
+      w.onerror = () => this.onWorkerCrash();
+    }
+
+    // Worker çökerse bekleyen işler bırakılır ve üretim ana iş parçacığında sürer.
+    onWorkerCrash() {
+      this.worker = null;
+      this.thunderJobs.clear();
+      for (const kind of Object.keys(this.inflight)) this.inflight[kind] = 0;
       this.fillQueues();
     }
 
@@ -104,6 +122,7 @@ self.onmessage = function (e) {
       else if (m.type === 'error') {
         if (job.kind === 'bolt') this.inflight[job.boltKind] = Math.max(0, this.inflight[job.boltKind] - 1);
         this.onEvent('error', { message: m.message });
+        this.fillQueues();
       }
     }
 
@@ -142,9 +161,7 @@ self.onmessage = function (e) {
 
     receiveThunder(job, res) {
       if (!this.audio || !this.audio.ok || !res || !res.data.length) return;
-      const delay = job.arrivalBase + res.delay - this.wallT;
-      if (delay < -0.5) return;
-      this.audio.playThunder(res, delay, job.pan);
+      this.audio.playThunder(res, job.arrivalBase + res.delay - this.wallT, job.pan);
     }
 
     // ---------- Parametreler ----------
@@ -169,18 +186,33 @@ self.onmessage = function (e) {
     }
 
     // target: { point, surface, dist } (Terrain.pickTarget / targetAt). kind: 'cg' | 'cgp' | 'spider' | 'ic'
+    // Dönüş: 'ok', 'hiz' (kullanıcı çakışı hız sınırına takıldı) ya da 'dolu' (bekleyen çakış kuyruğu dolu).
+    // Kullanıcı çakışları arasında en az 0,4 sn (yumuşak kipte 3 sn) olur: basılı tutulan tuş sahneyi
+    // saniyede 3'ten fazla yakıp söndüremez (WCAG 2.3.1).
     strike(target, kind, opts) {
-      const k = this.resolveKind(kind);
-      if (k === 'ic') { this.startIC(target, opts); return true; }
-      if (this.ready[k] && this.ready[k].length) {
-        this.startBolt(k, this.ready[k].shift(), target, opts);
-        this.fillQueues();
-        return true;
+      const o = opts || {};
+      if (o.user) {
+        if (this.wallT - this.lastUserStrike < (this.params.soft ? 3 : 0.4)) return 'hiz';
+        this.lastUserStrike = this.wallT;
       }
-      if (this.waiting.length >= 4) return false;
-      this.waiting.push({ kind: k, target, opts });
+      const k = this.resolveKind(kind);
+      if (k === 'ic') { this.startIC(target, o); return 'ok'; }
+      if (this.ready[k] && this.ready[k].length) {
+        this.startBolt(k, this.ready[k].shift(), target, o);
+        this.fillQueues();
+        return 'ok';
+      }
+      if (this.waiting.length >= 4) return 'dolu';
+      this.waiting.push({ kind: k, target, opts: o });
       this.fillQueues();
-      return true;
+      return 'ok';
+    }
+
+    // Olayın simülasyon zamanını duvar saatine eşleyen parçalı doğrusal tablo (zaman ölçeği değişimlerinde kırılır).
+    newWallMap(ev, leadWall) {
+      ev.wall = [{ sim: 0, wall: this.wallT + (leadWall || 0), ts: this.timeScale }];
+      ev.wAge = new Float64Array(8).fill(-1);
+      ev.wTs = new Float64Array(8).fill(this.timeScale);
     }
 
     randomTarget(minD, maxD) {
@@ -219,6 +251,7 @@ self.onmessage = function (e) {
         id: this.eventId++, kind, bolt, boltKey, tl, offset, target, tStart: this.simT,
         lights: bolt.lights, gain: GAIN[kind], replay: false, auto: !!o.auto,
       };
+      this.newWallMap(ev);
       ev.stats = this.makeStats(ev);
       this.pushEvent(ev);
       this.focus = ev;
@@ -251,11 +284,8 @@ self.onmessage = function (e) {
           M.lerp(0.5, 1, rng()), Lum.FLAG.CLOUD, 1 | (Math.floor(rng() * 256) & 0xfe)], i * 8);
       }
       const ev = { id: this.eventId++, kind: 'ic', tl, offset: [0, 0, 0], target, tStart: this.simT, lights, replay: false, auto: !!(opts && opts.auto) };
-      ev.stats = this.makeStats(ev);
-      this.pushEvent(ev);
-      if (!(opts && opts.auto) || !this.focus || this.simT - this.focus.tStart > 1.2) this.focus = ev;
-      this.onEvent('strike', ev.stats);
-      // Sahte akustik: bulut içinde yatay kanallar
+      this.newWallMap(ev);
+      // Akustik: bulut içinde yatay kanallar (gök gürültüsü gecikmesi de buradan hesaplanır)
       const ac = [];
       for (let k = 0; k < 3; k++) {
         let x = c[0], y = c[1], z = c[2], az = rng() * 6.283;
@@ -268,6 +298,10 @@ self.onmessage = function (e) {
         }
       }
       ev.acoustic = Float32Array.from(ac);
+      ev.stats = this.makeStats(ev);
+      this.pushEvent(ev);
+      if (!(opts && opts.auto) || !this.focus || this.simT - this.focus.tStart > 1.2) this.focus = ev;
+      this.onEvent('strike', ev.stats);
       this.scheduleThunder(ev);
     }
 
@@ -289,7 +323,6 @@ self.onmessage = function (e) {
         let e = 0;
         for (const ka of tl.peakKA) e += 1e5 * L * (ka / 30);
         s.energyGJ = e / 1e9;
-        s.tempK = Math.round(M.lerp(27000, 31500, this.rng()) / 500) * 500;
       }
       if (ev.kind === 'spider') { s.strokes = 0; s.surface = 'bulut tabanı'; }
       if (ev.kind === 'ic') s.surface = 'bulut';
@@ -299,7 +332,7 @@ self.onmessage = function (e) {
     estimateThunderDelay(ev) {
       const cam = T.CAMERA_POS;
       let best = Infinity;
-      const A = ev.bolt ? ev.bolt.acoustic : null;
+      const A = ev.bolt ? ev.bolt.acoustic : ev.acoustic;
       if (A) {
         for (let i = 0; i < A.length; i += 9) {
           const d = Math.hypot(A[i] + ev.offset[0] - cam[0], A[i + 1] + ev.offset[1] - cam[1], A[i + 2] + ev.offset[2] - cam[2]);
@@ -331,12 +364,16 @@ self.onmessage = function (e) {
       this.requestThunder(ev, acoustic, listener, strokes, M.clamp(pan, -1, 1), arrivalBase);
     }
 
-    // Son yıldırımı yavaş çekimde yeniden oynatır (zaman ölçeği arayüzde ayarlanır).
-    replay() {
+    // Son yıldırımı yeniden oynatır. ts: tekrarın zaman ölçeği (arayüz ayarlar); 2 ms'lik (duvar) ön pay bırakılır.
+    replay(ts) {
       const last = this.lastReplay;
       if (!last) return false;
+      const scale = ts != null ? ts : this.timeScale;
       this.events = this.events.filter((e) => e.boltKey !== last.boltKey);
-      const ev = Object.assign({}, last, { id: this.eventId++, tStart: this.simT + 0.002 * this.timeScale, replay: true });
+      const ev = Object.assign({}, last, { id: this.eventId++, tStart: this.simT + 0.002 * scale, replay: true });
+      ev.wall = [{ sim: 0, wall: this.wallT + 0.002, ts: scale }];
+      ev.wAge = new Float64Array(8).fill(-1);
+      ev.wTs = new Float64Array(8).fill(scale);
       ev.stats = Object.assign({}, last.stats, { id: ev.id, replay: true });
       this.events.push(ev);
       this.focus = ev;
@@ -353,6 +390,8 @@ self.onmessage = function (e) {
 
     // ---------- Kare güncellemesi ----------
     update(simT, wallT, dtSim, dtWall, timeScale) {
+      // Zaman ölçeği değiştiyse her olayın sim->duvar eşlemesine önceki kare sonunda kırılma noktası eklenir.
+      if (timeScale !== this.timeScale) for (const ev of this.events) this.addWallBreak(ev, this.simT, this.wallT, timeScale);
       this.simT = simT; this.wallT = wallT; this.timeScale = timeScale;
       this.cloudOffset[0] += this.wind[0] * 1.8 * dtSim;
       this.cloudOffset[1] += this.wind[1] * 1.8 * dtSim;
@@ -373,11 +412,33 @@ self.onmessage = function (e) {
         if (simT - ev.tStart < ev.tl.end + 0.6) keep.push(ev); else this.expire(ev);
       }
       this.events = keep;
-      this.collectLights(simT, timeScale);
+      this.updateWallAges();
+      this.collectLights(simT, timeScale, dtWall);
       this.updatePhase(simT);
     }
 
-    collectLights(simT, ts) {
+    addWallBreak(ev, simT, wallT, ts) {
+      const tl = simT - ev.tStart;
+      if (tl <= 0) { ev.wall = [{ sim: 0, wall: wallT + (-tl) / ts, ts }]; return; }
+      ev.wall.push({ sim: tl, wall: wallT, ts });
+    }
+
+    // Her darbenin başlangıcından beri geçen duvar süresi ve o anki zaman ölçeği (kalıcılık terimleri için).
+    updateWallAges() {
+      for (const ev of this.events) {
+        const t = this.simT - ev.tStart, S = ev.tl.strokes, W = ev.wall;
+        for (let k = 0; k < 8; k++) {
+          if (k < S.length && S[k].t <= t) {
+            let seg = W[0];
+            for (let i = W.length - 1; i >= 0; i--) if (W[i].sim <= S[k].t) { seg = W[i]; break; }
+            ev.wAge[k] = this.wallT - (seg.wall + (S[k].t - seg.sim) / seg.ts);
+            ev.wTs[k] = seg.ts;
+          } else { ev.wAge[k] = -1; ev.wTs[k] = this.timeScale; }
+        }
+      }
+    }
+
+    collectLights(simT, ts, dtWall) {
       const cand = this._cand;
       cand.length = 0;
       const out = this._out, soft = this.params.soft;
@@ -388,7 +449,7 @@ self.onmessage = function (e) {
         const g = I_REF * LIGHT_SCALE[ev.kind];
         for (let i = 0; i < n; i++) {
           const o = i * 8;
-          Lum.vertex(ev.tl, L[o + 4], L[o + 3], L[o + 5], L[o + 6], L[o + 7], t, ts, out, soft);
+          Lum.vertex(ev.tl, L[o + 4], L[o + 3], L[o + 5], L[o + 6], L[o + 7], t, ts, out, soft, ev.wAge, ev.wTs);
           const r = g * (out.hot * COL_HOT[0] + out.leader * COL_LEADER[0] + out.cc * COL_CC[0]);
           const gg = g * (out.hot * COL_HOT[1] + out.leader * COL_LEADER[1] + out.cc * COL_CC[1]);
           const b = g * (out.hot * COL_HOT[2] + out.leader * COL_LEADER[2] + out.cc * COL_CC[2]);
@@ -416,8 +477,15 @@ self.onmessage = function (e) {
       }
       this.lights.n = n;
       this.lights.nCloud = Math.min(n, 10);
-      this.flashSky[0] = sr; this.flashSky[1] = sg; this.flashSky[2] = sb;
       this.flashLevel = total / I_REF;
+      // Yumuşak kip güvenlik ağı: toplam ışık çıkışı duvar saatinde sınırlı hızla yükselir.
+      const g = this.softLimiter.apply(this.flashLevel, dtWall || 0, soft);
+      this.softGain = g;
+      if (g < 1) {
+        for (let i = 0; i < n; i++) { C[i * 4] *= g; C[i * 4 + 1] *= g; C[i * 4 + 2] *= g; }
+        sr *= g; sg *= g; sb *= g;
+      }
+      this.flashSky[0] = sr; this.flashSky[1] = sg; this.flashSky[2] = sb;
       // Yakınlık ağırlıklı parlama düzeyi (pozlama uyumu için): yakın ışıklar daha çok etkiler
       let near = 0;
       for (let i = 0; i < n; i++) {
@@ -425,7 +493,7 @@ self.onmessage = function (e) {
         const d2 = (c.x - cam[0]) ** 2 + (c.y - cam[1]) ** 2 + (c.z - cam[2]) ** 2;
         near += c.I / (d2 + 4e6);
       }
-      this.nearFlash = near;
+      this.nearFlash = near * g;
     }
 
     // Arayüzde gösterilen evre
@@ -512,7 +580,7 @@ self.onmessage = function (e) {
       const bolts = [];
       for (const ev of this.events) {
         if (!ev.bolt) continue;
-        bolts.push({ id: ev.boltKey, offset: ev.offset, t: this.simT - ev.tStart, timeline: ev.tl, gain: ev.gain });
+        bolts.push({ id: ev.boltKey, offset: ev.offset, t: this.simT - ev.tStart, timeline: ev.tl, gain: ev.gain * this.softGain, wAge: ev.wAge, wTs: ev.wTs });
       }
       const rain = this.params.rain;
       // Pozlama uyumu: yakın ve güçlü flaşta ~25 ms'de kısılır, ~0,6 sn'de geri döner (göz bebeği/kamera).

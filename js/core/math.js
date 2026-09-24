@@ -148,5 +148,19 @@
     },
   };
 
-  F.math = { clamp, lerp, smoothstep, mulberry32, gauss, lognormal, hash2, noise2, fbm2, ridged2, v3, mat4 };
+  // ---------- Kamera ----------
+  // Etkin dikey görüş açısı: yakınlaştırma açısı (yatay ekranda aynen) dikey ekranlarda yatay görüş en az 46°
+  // kalacak biçimde ölçeklenir; yakınlaştırma her en-boy oranında çalışır, üst sınır 100°.
+  function effectiveFov(zoomFov, aspect) {
+    const d = Math.PI / 180;
+    const base = Math.max(50 * d, 2 * Math.atan(Math.tan(23 * d) / aspect));
+    return Math.min(base * zoomFov / (50 * d), 100 * d);
+  }
+  // Görüşün arazi ağının kenarını göstermemesi için izin verilen en büyük yatay dönüş (radyan).
+  function yawLimit(meshHalf, fov, aspect, maxUser) {
+    const halfH = Math.atan(Math.tan(fov / 2) * aspect);
+    return clamp(meshHalf - halfH - 0.05, 0, maxUser);
+  }
+
+  F.math = { clamp, lerp, smoothstep, mulberry32, gauss, lognormal, hash2, noise2, fbm2, ridged2, v3, mat4, effectiveFov, yawLimit };
 })(typeof self !== 'undefined' ? self : globalThis);

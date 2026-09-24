@@ -28,12 +28,14 @@
     SOFT_SCALE: 0.35,   // yumuşak parlama kipinde tepe ölçeği
     SOFT_RISE: 0.25, SOFT_FALL: 0.8, // yumuşak zarf zaman sabitleri (duvar saati, sn)
     SOFT_NORM: 2.06,    // yumuşak zarfın tepesini 1'e getiren çarpan
-    LIM_RISE: 0.35, LIM_FALL: 0.7,   // FlashLimiter zaman sabitleri
     MAX_DT: 0.1,        // kare arası en büyük adım (sekme dönüşü vb.)
   };
 
   // Tek bir köşenin parlaklığı. out = { hot, leader, cc } (ayrı renklendirme için üç bileşen).
-  function vertex(tl, tLn, s, w, flags, mask, t, ts, out, soft) {
+  // wAge/wTs (isteğe bağlı): darbe başına, darbenin başladığı andan beri geçen duvar saati süresi ve o anki
+  // zaman ölçeği. Verilirse kalıcılık ve yumuşak zarf gerçek duvar süresinden hesaplanır; zaman ölçeği sonradan
+  // değişse de sönmüş bir parlama geri gelmez. Verilmezse (testler, ışık eğrisi) Δ / ts kullanılır.
+  function vertex(tl, tLn, s, w, flags, mask, t, ts, out, soft, wAge, wTs) {
     const C = CONST;
     let hot = 0, leader = 0, cc = 0;
     const strokes = tl.strokes;
@@ -43,8 +45,9 @@
         if (!(mask & (1 << k))) continue;
         const d = t - strokes[k].t;
         if (d < 0) continue;
-        if (soft) hot += strokes[k].amp * w * softEnv(d / ts);
-        else hot += strokes[k].amp * w * (0.7 * Math.exp(-d / C.IC_TAU1) + 0.3 * Math.exp(-d / C.IC_TAU2) + C.PERSIST * Math.exp(-(d / ts) / C.TAU_EYE));
+        const dW = wAge ? Math.max(0, wAge[k]) : d / ts;
+        if (soft) hot += strokes[k].amp * w * softEnv(dW);
+        else hot += strokes[k].amp * w * (0.7 * Math.exp(-d / C.IC_TAU1) + 0.3 * Math.exp(-d / C.IC_TAU2) + C.PERSIST * Math.exp(-dW / C.TAU_EYE));
       }
       out.hot = hot; out.leader = 0; out.cc = 0;
       return out;
@@ -73,8 +76,9 @@
         const tf = st.t + s / C.SPIDER_V;
         if (t >= tf && t >= tArr) {
           const d = t - tf;
-          if (soft) hot += st.amp * w * softEnv(d / ts) * 0.5;
-          else hot += st.amp * w * (0.6 * Math.exp(-d / C.SPIDER_TAU) + 0.5 * C.PERSIST * Math.exp(-(d / ts) / C.TAU_EYE));
+          const dW = wAge ? Math.max(0, wAge[k] - (s / C.SPIDER_V) / wTs[k]) : d / ts;
+          if (soft) hot += st.amp * w * softEnv(dW) * 0.5;
+          else hot += st.amp * w * (0.6 * Math.exp(-d / C.SPIDER_TAU) + 0.5 * C.PERSIST * Math.exp(-dW / C.TAU_EYE));
         }
         continue;
       }
@@ -85,8 +89,9 @@
       }
       if (t >= tFront) {
         const d = t - tFront;
-        if (soft) hot += st.amp * w * softEnv(d / ts);
-        else hot += st.amp * w * (C.A1 * Math.exp(-d / C.TAU1) + C.A2 * Math.exp(-d / C.TAU2) + C.PERSIST * Math.exp(-(d / ts) / C.TAU_EYE));
+        const dW = wAge ? Math.max(0, wAge[k] - (s / tl.vRS) / wTs[k]) : d / ts;
+        if (soft) hot += st.amp * w * softEnv(dW);
+        else hot += st.amp * w * (C.A1 * Math.exp(-d / C.TAU1) + C.A2 * Math.exp(-d / C.TAU2) + C.PERSIST * Math.exp(-dW / C.TAU_EYE));
         if (st.cc > 0) {
           const env = d < st.cc ? Math.min(1, d / C.CC_RISE) : Math.exp(-(d - st.cc) / C.CC_TAIL);
           let m = 1;
@@ -137,7 +142,7 @@
         }
         const Ik = k === 0 ? I1 : clamp(lognormal(rng, 12, 0.6), 3, 120);
         const amp = k === 0 ? 1 : clamp(Math.pow(Ik / I1, 0.7), 0.25, 1.3);
-        const hasCC = rng() < (k === n - 1 ? 0.45 : 0.25);
+        const hasCC = rng() < (k === n - 1 ? 0.3 : 0.12); // çakışların ~%30-50'sinde sürekli akım
         const cc = hasCC ? lerp(0.04, 0.25, rng()) : 0;
         const ccAmp = hasCC ? lerp(0.05, 0.12, rng()) : 0;
         const mc = [];
@@ -175,15 +180,15 @@
     return tl;
   }
 
-  // Genel sinyal yumuşatıcı: asimetrik alçak geçiren; yumuşak kipte tepeyi SOFT_SCALE ile ölçekler.
-  class FlashLimiter {
-    constructor() { this.level = 0; }
+  // Yükselme sınırlayıcısı (yumuşak parlama güvenlik ağı): çıkış düzeyi duvar saatinde en fazla e^(rate·dt)
+  // katı hızla yükselebilir; düşüşleri geciktirmez. apply() sinyale uygulanacak kazancı (0..1) döndürür.
+  class RiseLimiter {
+    constructor(rate, floor) { this.level = 0; this.rate = rate || 4; this.floor = floor || 0.3; }
     apply(signal, dtWall, enabled) {
-      if (!enabled) { this.level = signal * CONST.SOFT_SCALE; return signal; }
-      const target = signal * CONST.SOFT_SCALE;
-      const tau = target > this.level ? CONST.LIM_RISE : CONST.LIM_FALL;
-      this.level += (target - this.level) * (1 - Math.exp(-dtWall / tau));
-      return this.level;
+      if (!enabled) { this.level = signal; return 1; }
+      const cap = Math.max(this.level, this.floor) * Math.exp(this.rate * Math.max(0, dtWall));
+      this.level = Math.min(signal, cap);
+      return signal > 1e-9 ? this.level / signal : 1;
     }
   }
 
@@ -203,5 +208,5 @@
     }
   }
 
-  F.Lum = { FLAG, CONST, vertex, softEnv, makeTimeline, FlashLimiter, Clock };
+  F.Lum = { FLAG, CONST, vertex, softEnv, makeTimeline, RiseLimiter, Clock };
 })(typeof self !== 'undefined' ? self : globalThis);

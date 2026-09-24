@@ -108,23 +108,25 @@ test('pozitif yıldırım tek güçlü darbe ve uzun sürekli akım üretir', ()
   }
 });
 
-test('yumuşatıcı kare başına değişimi ve tepeyi sınırlar', () => {
-  const lim = new Lum.FlashLimiter();
-  let prev = 0, maxDisp = 0, maxStep = 0;
-  for (let frame = 0; frame < 240; frame++) {
-    const F0 = (Math.floor(frame / 3) % 2) ? 20 : 0; // 10 Hz yanıp sönme
-    const disp = lim.apply(F0, 1 / 60, true);
-    maxDisp = Math.max(maxDisp, disp);
-    maxStep = Math.max(maxStep, Math.abs(disp - prev));
-    prev = disp;
+test('yükselme sınırlayıcısı çıkışın ani artmasını engeller', () => {
+  const lim = new Lum.RiseLimiter(4, 0.3);
+  const dt = 1 / 60;
+  let prevOut = 0, worst = 0;
+  for (let frame = 0; frame < 120; frame++) {
+    const sig = frame < 10 ? 0 : 20;
+    const out = lim.apply(sig, dt, true) * sig;
+    if (prevOut > 0.3) worst = Math.max(worst, out / prevOut);
+    prevOut = out;
   }
-  assert.ok(maxDisp <= 20 * Lum.CONST.SOFT_SCALE + 1e-9, `tepe ${maxDisp}`);
-  assert.ok(maxStep <= 0.12 * 20 * Lum.CONST.SOFT_SCALE, `adım ${maxStep}`);
+  assert.ok(worst <= Math.exp(4 * dt) + 1e-9, `oran ${worst}`);
+  assert.ok(prevOut > 19.9, `sonunda tam düzeye ulaşmalı: ${prevOut}`);
 });
 
-test('yumuşatıcı kapalıyken sinyali değiştirmez', () => {
-  const lim = new Lum.FlashLimiter();
-  assert.equal(lim.apply(20, 1 / 60, false), 20);
+test('yükselme sınırlayıcısı düşüşü geciktirmez ve kapalıyken kazanç 1 olur', () => {
+  const lim = new Lum.RiseLimiter(4, 0.3);
+  for (let i = 0; i < 200; i++) lim.apply(10, 1 / 60, true);
+  assert.equal(lim.apply(2, 1 / 60, true), 1);
+  assert.equal(new Lum.RiseLimiter().apply(20, 1 / 60, false), 1);
 });
 
 test('yumuşak parlama kipinde çok darbeli çakış ani titreşim üretmez', () => {
@@ -172,4 +174,26 @@ test('bulut içi (IC) darbeleri sonlu parlaklık üretir ve söner', () => {
   assert.ok(out.hot > 0.1, `ic ${out.hot}`);
   Lum.vertex(tl, 0, 0, 1, FLAG.CLOUD, 0xff, tl.end + 0.5, 1, out);
   assert.ok(out.hot < 0.01);
+});
+
+test('kalıcılık duvar saatiyle söner: zaman ölçeği sonradan artsa da geri gelmez', () => {
+  const tl = fixedTimeline({ strokes: [{ t: 0.025, amp: 1, cc: 0, ccAmp: 0, mc: [] }] });
+  const t = 0.025 + 0.02;
+  Lum.vertex(tl, MAIN.tL, MAIN.s, MAIN.w, MAIN.flags, MAIN.mask, t, 1, out, false, [4.0], [1 / 200]);
+  assert.ok(out.hot < 0.01, `yavaş çekimde 4 sn önce geçen darbe: ${out.hot}`);
+  Lum.vertex(tl, MAIN.tL, MAIN.s, MAIN.w, MAIN.flags, MAIN.mask, t, 1, out, false, [0.02], [1]);
+  assert.ok(out.hot > 0.2, `gerçek zamanda 20 ms önce geçen darbe: ${out.hot}`);
+  Lum.vertex(tl, MAIN.tL, MAIN.s, MAIN.w, MAIN.flags, MAIN.mask, t, 1, out, true, [4.0], [1 / 200]);
+  assert.ok(out.hot < 0.02, `yumuşak kipte de: ${out.hot}`);
+});
+
+test('sürekli akım çakışların yaklaşık %30-55 kadarında görülür', () => {
+  let withCC = 0;
+  const N = 400;
+  for (let seed = 1; seed <= N; seed++) {
+    const tl = Lum.makeTimeline('cg', F.math.mulberry32(seed * 7919));
+    if (tl.strokes.some((s) => s.cc > 0)) withCC++;
+  }
+  const f = withCC / N;
+  assert.ok(f >= 0.3 && f <= 0.55, `oran ${f}`);
 });

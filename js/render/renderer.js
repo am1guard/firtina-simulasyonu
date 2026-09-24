@@ -31,6 +31,7 @@
       this.hdr = this.floatRT
         ? { internal: gl.RGBA16F, format: gl.RGBA, type: gl.HALF_FLOAT }
         : { internal: gl.RGBA8, format: gl.RGBA, type: gl.UNSIGNED_BYTE };
+      this.floatFailed = false;
       this.quality = this.opts.quality != null ? this.opts.quality : 2;
       this.maxDpr = this.opts.maxDpr || 2;
       this.frameData = new Float32Array(FRAME_FLOATS);
@@ -201,43 +202,76 @@
       W = Math.max(64, W); H = Math.max(64, H);
       if (this.targets && this.targets.W === W && this.targets.H === H && this.targets.q === this.quality) return;
       this.canvas.width = W; this.canvas.height = H;
-      const T = F.GL.target, old = this.targets;
-      if (old) {
-        for (const k of ['scene', 'cloud', 'refl', 'after0', 'after1']) F.GL.destroyTarget(gl, old[k]);
-        old.bloom.forEach((t) => F.GL.destroyTarget(gl, t));
+      this.destroyTargets(this.targets);
+      this.targets = null;
+      try {
+        if (this.opts.failFloat && this.floatRT) throw new Error('deneme: kayan noktalı hedef reddedildi');
+        this.targets = this.makeTargets(W, H, q);
+      } catch (e) {
+        if (!this.floatRT) throw e;
+        // Sürücü kayan noktalı hedefi tamamlayamadı: 8 bit kodlamalı yedek yola geçilir (shaders.js LDR_TARGETS).
+        this.floatRT = false;
+        this.floatFailed = true;
+        this.hdr = { internal: gl.RGBA8, format: gl.RGBA, type: gl.UNSIGNED_BYTE };
+        for (const k of Object.keys(this.prog)) gl.deleteProgram(this.prog[k].p);
+        this.compile();
+        this.targets = this.makeTargets(W, H, q);
       }
-      const cw = Math.max(32, Math.round(W * q.cloud)), ch = Math.max(32, Math.round(H * q.cloud));
-      const rw = Math.max(32, Math.round(W * q.refl)), rh = Math.max(32, Math.round(H * q.refl));
-      const bloom = [];
-      let bw = Math.ceil(W / 2), bh = Math.ceil(H / 2);
-      for (let i = 0; i < BLOOM_LEVELS; i++) {
-        bloom.push(T(gl, Math.max(1, bw), Math.max(1, bh), this.hdr, false));
-        bw = Math.ceil(bw / 2); bh = Math.ceil(bh / 2);
-      }
-      const aw = bloom[2].w, ah = bloom[2].h;
-      this.targets = {
-        W, H, q: this.quality,
-        scene: T(gl, W, H, this.hdr, true),
-        cloud: T(gl, cw, ch, this.hdr, false),
-        refl: T(gl, rw, rh, this.hdr, true),
-        bloom,
-        after0: T(gl, aw, ah, this.hdr, false),
-        after1: T(gl, aw, ah, this.hdr, false),
-      };
       for (const t of [this.targets.after0, this.targets.after1]) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
+    destroyTargets(t) {
+      if (!t) return;
+      const gl = this.gl;
+      for (const k of ['scene', 'cloud', 'refl', 'after0', 'after1']) F.GL.destroyTarget(gl, t[k]);
+      (t.bloom || []).forEach((b) => F.GL.destroyTarget(gl, b));
+    }
+
+    // Tüm ara hedefler; biri tamamlanamazsa o ana dek oluşturulanlar silinir ve hata yukarı iletilir.
+    makeTargets(W, H, q) {
+      const gl = this.gl, made = [];
+      const T = (w, h, depth) => { const t = F.GL.target(gl, w, h, this.hdr, depth); made.push(t); return t; };
+      try {
+        return this.buildTargets(W, H, q, T);
+      } catch (e) {
+        made.forEach((t) => F.GL.destroyTarget(gl, t));
+        throw e;
+      }
+    }
+
+    buildTargets(W, H, q, T) {
+      const cw = Math.max(32, Math.round(W * q.cloud)), ch = Math.max(32, Math.round(H * q.cloud));
+      const rw = Math.max(32, Math.round(W * q.refl)), rh = Math.max(32, Math.round(H * q.refl));
+      const bloom = [];
+      let bw = Math.ceil(W / 2), bh = Math.ceil(H / 2);
+      for (let i = 0; i < BLOOM_LEVELS; i++) {
+        bloom.push(T(Math.max(1, bw), Math.max(1, bh), false));
+        bw = Math.ceil(bw / 2); bh = Math.ceil(bh / 2);
+      }
+      const aw = bloom[2].w, ah = bloom[2].h;
+      return {
+        W, H, q: this.quality,
+        scene: T(W, H, true),
+        cloud: T(cw, ch, false),
+        refl: T(rw, rh, true),
+        bloom,
+        after0: T(aw, ah, false),
+        after1: T(aw, ah, false),
+      };
+    }
+
     setCamera(c) { Object.assign(this.camera, c); }
 
-    // Dikey ekranlarda yatay görüş açısı en az 46° kalsın diye dikey açı büyütülür.
+    // Etkin dikey görüş açısı (math.js effectiveFov): dikey ekranda yatay görüş en az 46° kalır, yakınlaştırma çalışır.
     effectiveFov() {
-      const t = this.targets, aspect = t.W / t.H;
-      const minH = 46 * Math.PI / 180;
-      return Math.max(this.camera.fov, 2 * Math.atan(Math.tan(minH / 2) / aspect));
+      const t = this.targets;
+      return F.math.effectiveFov(this.camera.fov, t.W / t.H);
     }
+
+    aspect() { return this.targets.W / this.targets.H; }
 
     cameraForward() {
       const c = this.camera, cp = Math.cos(c.pitch);
@@ -286,7 +320,7 @@
       d.set(m.viewProj, OFF.mainViewProj);
       const p = this.camera.pos;
       d.set([p[0], refl ? -p[1] : p[1], p[2], refl ? 1 : 0], OFF.camPos);
-      d.set([f.simT % 1000, f.wallT % 10000, f.timeScale, f.towerLamp], OFF.time);
+      d.set([f.simT % 3600, f.wallT % 10000, f.timeScale, f.towerLamp], OFF.time);
       d.set([f.sigmaE, f.sigmaS, f.cloudBase, f.rain], OFF.atmos);
       d.set([f.flashSky[0], f.flashSky[1], f.flashSky[2], f.exposure], OFF.flash);
       d.set([f.wind[0], f.wind[1], f.cloudOffset[0], f.cloudOffset[1]], OFF.wind);
@@ -356,12 +390,17 @@
       gl.uniform1i(pr.u.uNoise, 0);
       const strokes = this._strokes || (this._strokes = new Float32Array(32));
       const mcs = this._mcs || (this._mcs = new Float32Array(32));
+      const sw = this._strokeW || (this._strokeW = new Float32Array(32));
       for (const b of f.bolts) {
         const e = this.bolts.get(b.id);
         if (!e) continue;
         const tl = b.timeline;
         strokes.fill(0); mcs.fill(0);
         const n = Math.min(8, tl.strokes.length);
+        for (let k = 0; k < 8; k++) {
+          sw[k * 4] = b.wAge ? b.wAge[k] : -1;
+          sw[k * 4 + 1] = b.wTs ? b.wTs[k] : f.timeScale;
+        }
         for (let k = 0; k < n; k++) {
           const st = tl.strokes[k];
           strokes.set([st.t, st.amp, st.cc, st.ccAmp], k * 4);
@@ -371,6 +410,7 @@
         }
         gl.uniform4fv(pr.u.uStroke, strokes);
         gl.uniform4fv(pr.u.uMC, mcs);
+        gl.uniform4fv(pr.u.uStrokeW, sw);
         gl.uniform4f(pr.u.uBoltA, tl.leaderDur, tl.vRS, tl.vDart, tl.kind === 'spider' ? 1 : 0);
         gl.uniform4f(pr.u.uBoltB, b.t, f.timeScale, tl.glowEnd || 0, n);
         gl.uniform4f(pr.u.uBoltC, b.offset[0], b.offset[1], b.offset[2], b.gain);

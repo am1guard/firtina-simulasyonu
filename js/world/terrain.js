@@ -12,6 +12,7 @@
   const VILLAGE = { cx: -220, cz: -1420, rx: 520, rz: 160 };
   const TOWER = { x: 720, z: -2150, height: 150 };
   const PICK = { minDist: 150, maxDist: 14000, skyMin: 1500, towerRadius: 350, towerRay: 150 };
+  const MESH_HALF = 1.75; // arazi ağının kameraya göre yarı açısı (radyan, ~100°)
 
   const sq = (v) => v * v;
   function peninsula(x, z) { return Math.exp(-sq((x + 760) / 400) - sq((z + 540) / 170)); }
@@ -85,8 +86,8 @@
   // ---------- Arazi ağı: kameraya göre kutupsal ızgara ----------
   function buildMesh(opts) {
     const o = opts || {};
-    const rings = o.rings || 400, spokes = o.spokes || 540;
-    const r0 = 10, r1 = 30000, th0 = -1.45, th1 = 1.45;
+    const rings = o.rings || 400, spokes = o.spokes || 640;
+    const r0 = 10, r1 = 30000, th0 = -MESH_HALF, th1 = MESH_HALF;
     const n = rings * spokes;
     const positions = new Float32Array(n * 3), normals = new Float32Array(n * 3), forest = new Float32Array(n);
     for (let i = 0; i < rings; i++) {
@@ -361,7 +362,7 @@
   }
 
   F.Terrain = {
-    CAMERA_POS, CLOUD_BASE, LAMP_STRIDE, LAKE, VILLAGE, TOWER, PICK,
+    CAMERA_POS, CLOUD_BASE, LAMP_STRIDE, LAKE, VILLAGE, TOWER, PICK, MESH_HALF,
     lakeField, groundHeight, height, surfaceHeight, forestMask, villageMask, isWater,
     tower, buildMesh, buildVillage, pickTarget, targetAt, classify,
   };

@@ -137,9 +137,12 @@
       this.roar.gain.setTargetAtTime(0.08 * r, t, 0.4);
     }
 
-    // res: Thunder.synth çıktısı; delaySec: şimdiden itibaren gecikme; pan: -1 (sol) .. 1 (sağ)
+    // res: Thunder.synth çıktısı; delaySec: şimdiden itibaren gecikme; pan: -1 (sol) .. 1 (sağ).
+    // Sentez geç biterse (negatif gecikme) ses baştan değil, olması gereken yerinden başlar.
     playThunder(res, delaySec, pan) {
       if (!this.ok || !res || !res.data || !res.data.length) return;
+      const offset = Math.max(0, -delaySec);
+      if (offset >= res.data.length / res.sampleRate - 0.05) return;
       const ctx = this.ctx;
       const buf = ctx.createBuffer(1, res.data.length, res.sampleRate);
       buf.getChannelData(0).set(res.data);
@@ -150,7 +153,7 @@
         const p = ctx.createStereoPanner(); p.pan.value = Math.max(-0.85, Math.min(0.85, pan || 0));
         g.connect(p); p.connect(this.thunderBus);
       } else g.connect(this.thunderBus);
-      src.start(ctx.currentTime + Math.max(0, delaySec));
+      src.start(ctx.currentTime + Math.max(0, delaySec), offset);
       this.sources.add(src);
       src.onended = () => this.sources.delete(src);
     }

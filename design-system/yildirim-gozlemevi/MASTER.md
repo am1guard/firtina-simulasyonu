@@ -178,17 +178,17 @@
 
 ## Anti-Patterns (Do NOT Use)
 
-- ❌ Generic design
-- ❌ No immersion
+- Yasak: Generic design
+- Yasak: No immersion
 
 ### Additional Forbidden Patterns
 
-- ❌ **Emojis as icons** — Use SVG icons (Heroicons, Lucide, Simple Icons)
-- ❌ **Missing cursor:pointer** — All clickable elements must have cursor:pointer
-- ❌ **Layout-shifting hovers** — Avoid scale transforms that shift layout
-- ❌ **Low contrast text** — Maintain 4.5:1 minimum contrast ratio
-- ❌ **Instant state changes** — Always use transitions (150-300ms)
-- ❌ **Invisible focus states** — Focus states must be visible for a11y
+- Yasak: **Emojis as icons** — Use SVG icons (Heroicons, Lucide, Simple Icons)
+- Yasak: **Missing cursor:pointer** — All clickable elements must have cursor:pointer
+- Yasak: **Layout-shifting hovers** — Avoid scale transforms that shift layout
+- Yasak: **Low contrast text** — Maintain 4.5:1 minimum contrast ratio
+- Yasak: **Instant state changes** — Always use transitions (150-300ms)
+- Yasak: **Invisible focus states** — Focus states must be visible for a11y
 
 ---
 

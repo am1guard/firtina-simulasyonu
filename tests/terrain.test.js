@@ -101,3 +101,12 @@ test('targetAt zemin hedefi üretir ve kuleye yakınsa kule ucuna yapışır', (
   assert.equal(w.surface, 'göl');
   assert.equal(w.point[1], 0);
 });
+
+test('arazi ağı en geniş yatay görüşü ve en uç bakışı kapsar', () => {
+  const need = 0.75 + Math.atan(Math.tan(34 * Math.PI / 180) * 16 / 9) + 0.05;
+  assert.ok(T.MESH_HALF >= need, `ağ yarı açısı ${T.MESH_HALF}, gereken ${need}`);
+  const m = T.buildMesh({ rings: 8, spokes: 16 });
+  const i = 7 * 16; // son halkanın ilk ışını
+  const ang = Math.atan2(m.positions[3 * i] - CAM[0], -(m.positions[3 * i + 2] - CAM[2]));
+  assert.ok(Math.abs(ang + T.MESH_HALF) < 1e-6, `ilk ışın açısı ${ang}`);
+});

@@ -1,6 +1,7 @@
 /* Yıldırım Gözlemevi — önyükleme ve ana döngü.
  * URL parametreleri (yerel test için): ?test (elle saat, çizim tamponu korunur), ?nofloat (RGBA8 yedek yolu),
- * ?noworker (DBM ana iş parçacığında), ?q=0..3 (sabit kalite). */
+ * ?failfloat (kayan noktalı hedef reddedilmiş gibi davranır; yedeğe geçişi dener), ?noworker (DBM ana iş
+ * parçacığında), ?q=0..3 (sabit kalite). */
 (function () {
   'use strict';
   const F = window.FIRTINA;
@@ -14,6 +15,8 @@
       el.hidden = false;
       el.querySelector('[data-hata-baslik]').textContent = title;
       el.querySelector('[data-hata-ayrinti]').textContent = detail || '';
+      const reload = el.querySelector('[data-hata-yukle]');
+      if (reload) { reload.onclick = () => location.reload(); reload.focus(); }
     }
     console.error(title + (detail ? '\n' + detail : ''));
     window.__firtina = { ready: false, error: title + (detail ? '\n' + detail : '') };
@@ -24,6 +27,7 @@
     renderer = new F.Renderer(canvas, {
       preserve: TEST,
       noFloat: qs.has('nofloat'),
+      failFloat: qs.has('failfloat'),
       quality: qs.has('q') ? Number(qs.get('q')) : undefined,
     });
   } catch (e) {
@@ -34,6 +38,15 @@
     }
     return;
   }
+
+  // GPU sıfırlanırsa (sürücü çökmesi, bellek baskısı) döngü durur ve yeniden yükleme önerilir.
+  let lost = false;
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    lost = true;
+    if (window.__firtina && window.__firtina.audio) window.__firtina.audio.setPaused(true);
+    fatal('Grafik bağlamı kaybedildi', 'Tarayıcı ya da sürücü GPU\'yu sıfırladı. Simülasyonu sürdürmek için sayfayı yeniden yükle.');
+  });
 
   const tWorld = performance.now();
   renderer.setWorld(F.Terrain.buildMesh(), F.Terrain.buildVillage());
@@ -76,6 +89,7 @@
   }
 
   function loop(now) {
+    if (lost) return;
     try {
       frame(now);
     } catch (e) {

@@ -512,13 +512,16 @@ const float CC_RISE = ${lit(C.CC_RISE)}, CC_TAIL = ${lit(C.CC_TAIL)}, MC_TAU = $
 const float SPIDER_V = ${lit(C.SPIDER_V)}, SPIDER_TAU = ${lit(C.SPIDER_TAU)}, SPIDER_BASE = ${lit(C.SPIDER_BASE)}, SPIDER_TIP = ${lit(C.SPIDER_TIP)};
 const float SOFT_SCALE = ${lit(C.SOFT_SCALE)}, SOFT_RISE = ${lit(C.SOFT_RISE)}, SOFT_FALL = ${lit(C.SOFT_FALL)}, SOFT_NORM = ${lit(C.SOFT_NORM)};
 uniform vec4 uStroke[8];  // t, genlik, sürekli akım süresi, sürekli akım genliği
+uniform vec4 uStrokeW[8]; // x: darbe başından beri geçen duvar süresi (-1: başlamadı), y: o sıradaki zaman ölçeği
 uniform vec4 uMC[8];      // iki M-bileşeni: (t1, a1, t2, a2)
 uniform vec4 uBoltA;      // öncü süresi, dönüş darbesi hızı, ok öncü hızı, tür (1 = örümcek)
-uniform vec4 uBoltB;      // t, zaman ölçeği, ışıma sonu, darbe sayısı
+uniform vec4 uBoltB;      // t, zaman ölçeği (kullanılmıyor), ışıma sonu, darbe sayısı
 uniform vec4 uBoltC;      // öteleme xyz, kazanç
 float softEnv(float x) { return SOFT_SCALE * SOFT_NORM * (1.0 - exp(-x / SOFT_RISE)) * exp(-x / SOFT_FALL); }
+// Göz kalıcılığı ve yumuşak zarf duvar saatinde işler (luminosity.js vertex ile eş): dW, cephe noktaya
+// ulaştığından beri geçen duvar süresidir; zaman ölçeği değişse de süreklidir.
 vec3 boltLum(float tLn, float s, float w, int flags, int mask) {
-  float t = uBoltB.x, ts = uBoltB.y;
+  float t = uBoltB.x;
   bool soft = uCounts.w > 0.5;
   bool spider = uBoltA.w > 0.5;
   float leaderDur = uBoltA.x;
@@ -546,8 +549,9 @@ vec3 boltLum(float tLn, float s, float w, int flags, int mask) {
       float tf = st.x + s / SPIDER_V;
       if (t >= tf && t >= tArr) {
         float d = t - tf;
-        if (soft) hot += st.y * w * softEnv(d / ts) * 0.5;
-        else hot += st.y * w * (0.6 * exp(-d / SPIDER_TAU) + 0.5 * PERSIST * exp(-(d / ts) / TAU_EYE));
+        float dW = max(uStrokeW[k].x - (s / SPIDER_V) / uStrokeW[k].y, 0.0);
+        if (soft) hot += st.y * w * softEnv(dW) * 0.5;
+        else hot += st.y * w * (0.6 * exp(-d / SPIDER_TAU) + 0.5 * PERSIST * exp(-dW / TAU_EYE));
       }
       continue;
     }
@@ -558,8 +562,9 @@ vec3 boltLum(float tLn, float s, float w, int flags, int mask) {
     }
     if (t >= tFront) {
       float d = t - tFront;
-      if (soft) hot += st.y * w * softEnv(d / ts);
-      else hot += st.y * w * (A1 * exp(-d / TAU1) + A2 * exp(-d / TAU2) + PERSIST * exp(-(d / ts) / TAU_EYE));
+      float dW = max(uStrokeW[k].x - (s / uBoltA.y) / uStrokeW[k].y, 0.0);
+      if (soft) hot += st.y * w * softEnv(dW);
+      else hot += st.y * w * (A1 * exp(-d / TAU1) + A2 * exp(-d / TAU2) + PERSIST * exp(-dW / TAU_EYE));
       if (st.z > 0.0) {
         float env = d < st.z ? min(1.0, d / CC_RISE) : exp(-(d - st.z) / CC_TAIL);
         float m = 1.0;
@@ -791,7 +796,12 @@ uniform sampler2D uCur;
 uniform float uDecay;
 in vec2 vUv;
 out vec4 outColor;
-void main() { outColor = encodeHDR(max(decodeHDR(texture(uPrev, vUv)) * uDecay, decodeHDR(texture(uCur, vUv)))); }
+void main() {
+  vec3 c = max(decodeHDR(texture(uPrev, vUv)) * uDecay, decodeHDR(texture(uCur, vUv)));
+  // Bozuk bir kare (NaN/sonsuz) iz tamponunda kalıcı lekeye dönüşmesin.
+  if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0);
+  outColor = encodeHDR(min(c, vec3(6.0e4)));
+}
 `;
   const COMPOSITE_FS = HEADER + FRAME + `
 uniform sampler2D uScene;

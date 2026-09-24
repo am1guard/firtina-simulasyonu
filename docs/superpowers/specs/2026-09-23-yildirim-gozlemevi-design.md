@@ -72,17 +72,25 @@ Veri akışı (her kare):
 
 ## 4. Parlaklık zaman modeli (`js/sim/luminosity.js` ve GLSL eşi)
 
-Gerçek süreler (sim zamanı): basamaklı öncü 20-35 ms; dönüş darbesi hızı ~1e8 m/s; darbe arası 40-80 ms
-(log-normal); ok öncü ~1,5e7 m/s; sürekli akım %30-50 olasılıkla 40-250 ms.
+Gerçek süreler (sim zamanı): basamaklı öncü 15-40 ms (pozitif yıldırımda 25-70 ms); dönüş darbesi hızı ~1e8 m/s;
+darbe arası 40-80 ms (log-normal); ok öncü ~1,5e7 m/s; sürekli akım %30-50 olasılıkla 40-250 ms.
 
 Köşe parlaklığı `L(v,t)`:
 - Öncü: varıştan sonra zayıf kanal + uçta üstel sönen parlama (uçlar parlak, arka zayıf).
 - Dönüş darbesi k: cephe `t_k + s_v / v_rs` anında gelir; `A_k * w_v * (0,8 e^{-Δ/60µs} + 0,2 e^{-Δ/1,5ms})`
-  artı algısal kalıcılık terimi `0,35 A_k w_v e^{-Δ_duvar/70ms}` (Δ_duvar = Δ / zamanÖlçeği). İlk darbe dalları yakar,
-  sonrakiler yalnızca ana kanalı ve maskedeki bulut içi dalları.
+  artı algısal kalıcılık terimi `0,35 A_k w_v e^{-Δ_duvar/70ms}`. Δ_duvar, cephe köşeye ulaştığından beri geçen
+  duvar süresidir; olay başına sim->duvar eşlemesiyle (zaman ölçeği her değiştiğinde kırılma noktası) hesaplanır,
+  böylece yavaş çekimden çıkınca sönmüş kanal yeniden parlamaz. İlk darbe dalları yakar, sonrakiler yalnızca ana
+  kanalı ve maskedeki bulut içi dalları.
 - Ok öncü: ana kanalda yukarıdan aşağı parlak uç.
 - Sürekli akım: ana kanalda düşük düzey, M-bileşeni darbeleriyle.
 Aynı işlev CPU'da ışık kaynakları ve ışık eğrisi için, GPU'da köşe başına kullanılır.
+
+Işığa duyarlılık güvenliği (WCAG 2.3.1: saniyede 3'ten fazla flaş yok):
+- Kullanıcı çakışları arasında en az 0,4 sn, yumuşak parlamada en az 3 sn olur; basılı tutulan tuşun otomatik
+  tekrarı çakış üretmez.
+- Yumuşak parlama: darbeler tek yumuşak zarfa dönüşür; ayrıca toplam ışık çıkışı duvar saatinde saniyede en fazla
+  e^4 kat yükselir (durum tutan çıkış sınırlayıcısı).
 
 ## 5. Görüntü (WebGL2, HDR)
 
@@ -95,7 +103,7 @@ Aynı işlev CPU'da ışık kaynakları ve ışık eğrisi için, GPU'da köşe 
 - Arazi: kutupsal ızgara ağı (kameraya yakın sık), göl, ormanlı tepeler (gölgelik tümsekleri), uzak dağlar;
   Lambert + gökyüzü parlaması (yukarı bakan yüzeyler) + ıslak parlaklık.
 - Köy: ~70 ev (kutu + çatı), prosedürel pencereler (sıcak ışık), kilise kulesi, sokak lambaları.
-- Radyo kulesi: 120 m, üç kat kırmızı ikaz lambası; 350 m yarıçap içindeki hedefleri kendine çeker.
+- Radyo kulesi: 150 m, üç kat kırmızı ikaz lambası; 350 m yarıçap içindeki hedefleri kendine çeker.
 - Göl: ayna kamerasıyla düzlemsel yansıma (yarım çözünürlük), yağmur halkası normalleri, rüzgâr dalgaları,
   mesafeyle artan dikey bulanıklık (ışık şeritleri), Fresnel.
 - Yıldırım: örneklenmiş kapsül parçaları; ekran uzayında mesafe profiliyle çekirdek + hale; alt piksel genişlikte
@@ -130,7 +138,8 @@ Tasarım kuralları: `design-system/yildirim-gozlemevi/pages/simulasyon.md`.
 ## 8. Hata durumları
 
 - WebGL2 yok: açıklayıcı Türkçe mesaj ve öneri.
-- Kayan nokta render hedefi yok: RGBA8 yedek yolu (daha düşük dinamik aralık).
+- Kayan nokta render hedefi yok ya da sürücü tamamlayamıyor: RGBA8 yedek yolu (daha düşük dinamik aralık).
+- GPU bağlamı kaybedilirse: döngü durur, açıklayıcı mesaj ve "Sayfayı yeniden yükle" düğmesi gösterilir.
 - Shader derleme hatası: hangi shader ve satır olduğu konsola ve ekrana yazılır.
 - Worker kurulamazsa: DBM ana iş parçacığında zaman dilimli çalışır.
 - AudioContext yoksa veya reddedilirse: sessiz devam, ses düğmesi devre dışı.

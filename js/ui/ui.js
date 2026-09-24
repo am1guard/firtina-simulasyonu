@@ -61,8 +61,17 @@
       this.domTimer = 0;
       this.fpsEma = 60;
       this.hintTimer = 0;
-      this.lastAnnounce = -10;
-      this.colors = { plasma: cssVar('--plasma') || '#f5f3ff', ion: cssVar('--ion') || '#aeb8ff', sodium: cssVar('--sodium') || '#f4b860', line: 'rgba(168,178,222,0.16)', dim: cssVar('--text-dim') || '#a3abc4' };
+      this.etaTimer = 0;
+      this.softNoteAt = -Infinity;
+      this.narrow = root.matchMedia ? root.matchMedia('(max-width: 720px)') : { matches: false };
+      // Tuval çizimleri de CSS belirteçlerini kullanır (css/style.css :root).
+      this.colors = {
+        plasma: cssVar('--plasma'), sodium: cssVar('--sodium'), sodiumSoft: cssVar('--sodium-soft'),
+        line: cssVar('--line'), dim: cssVar('--text-dim'),
+        fillTop: cssVar('--curve-fill-top'), fillBottom: cssVar('--curve-fill-bottom'),
+      };
+      this.curveFont = `${cssVar('--font-mono')}`;
+      this.curveFontPx = parseFloat(cssVar('--fs-canvas')) || 10;
       this.bind();
       this.prestart();
     }
@@ -76,6 +85,7 @@
       this.setSwitch('yumusak', soft);
       Object.assign(this.storm.params, { auto: true, mode: 'ic', rate: 5, soft: true });
       this.renderer.autoQuality = true;
+      this.setTimeScale(this.clock.timeScale); // kaydırıcı, çıktı ve aria-valuetext başlangıçta da tutarlı
       this.updateRangeFills();
       if (this.test) { this.$('baslangic').hidden = true; this.started = true; Object.assign(this.storm.params, { mode: 'karisik', rate: 7, soft: false }); return; }
       requestAnimationFrame(() => this.$('baslat').focus());
@@ -87,13 +97,12 @@
       const soft = this.$('gate-yumusak').getAttribute('aria-checked') === 'true';
       const sound = this.$('gate-ses').getAttribute('aria-checked') === 'true';
       this.setSwitch('yumusak', soft);
-      if (sound) { this.audio.init(); this.audio.setRain(this.storm.params.rain); }
       this.setMuted(!sound);
       Object.assign(this.storm.params, { mode: this.mode, rate: Number(this.$('siddet').value), soft });
       this.storm.autoTimer = 6;
       const gate = this.$('baslangic');
       gate.classList.add('leaving');
-      setTimeout(() => { gate.hidden = true; }, this.reduced ? 0 : 320);
+      setTimeout(() => { gate.hidden = true; }, this.reduced ? 0 : 300); // --t-slow
       this.$('dusur').focus();
       // İlk izlenim: kısa bir sessizlikten sonra görüş alanında bir yıldırım.
       setTimeout(() => this.strikeRandom('cg', 2600, 5200, true), 1400);
@@ -107,6 +116,10 @@
       $('baslangic').addEventListener('keydown', (e) => this.trapFocus(e, $('baslangic')));
 
       $('dusur').addEventListener('click', () => this.strikeRandom());
+      // Odaktaki düğmede basılı tutulan Enter/Boşluk her tekrarında yeniden tıklamasın (flaş dizisi olmasın).
+      for (const id of ['dusur', 'tekrar', 'duraklat', 'ses']) {
+        $(id).addEventListener('keydown', (e) => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });
+      }
       $('tekrar').addEventListener('click', () => this.replay());
       $('duraklat').addEventListener('click', () => this.togglePause());
       $('ses').addEventListener('click', () => this.setMuted(!this.muted));
@@ -118,7 +131,11 @@
 
       for (const r of document.querySelectorAll('input[name="tur"]')) r.addEventListener('change', () => { if (r.checked) this.setMode(r.value); });
       $('dallanma').addEventListener('input', () => { $('dallanma-deger').textContent = nf1.format(Number($('dallanma').value)); this.updateRangeFills(); });
-      $('dallanma').addEventListener('change', () => this.storm.setParam('eta', Number($('dallanma').value)));
+      // Klavyeyle adım adım değiştirirken her adımda kuyruk yeniden üretilmesin: son değişiklikten 350 ms sonra uygulanır.
+      $('dallanma').addEventListener('change', () => {
+        clearTimeout(this.etaTimer);
+        this.etaTimer = setTimeout(() => this.storm.setParam('eta', Number($('dallanma').value)), 350);
+      });
       $('siddet').addEventListener('input', () => {
         const v = Number($('siddet').value);
         $('siddet-deger').textContent = v ? `${v}/dk` : 'kapalı';
@@ -176,6 +193,13 @@
         else if (!this.paused) this.audio.setPaused(false);
       });
       root.addEventListener('resize', () => this.renderer.resize());
+      // Pencere odağı giderken bırakılan tuş ve işaretçi olayları gelmez; kamera sürüklenmeye devam etmesin.
+      root.addEventListener('blur', () => {
+        this.keysDown.clear();
+        this.pointers.clear();
+        this.pinch = null;
+        this.canvas.classList.remove('dragging');
+      });
     }
 
     trapFocus(e, container) {
@@ -216,8 +240,16 @@
     }
 
     fireStrike(target, kind, screen, auto) {
-      const ok = this.storm.strike(target, kind, { user: !auto });
-      if (!ok) { this.toast('Yıldırımlar hazırlanıyor, birazdan tekrar dene.'); return; }
+      const status = this.storm.strike(target, kind, { user: !auto });
+      if (status === 'dolu') { this.toast('Yıldırımlar hazırlanıyor, birazdan tekrar dene.'); return; }
+      if (status === 'hiz') {
+        // Yumuşak kipte kullanıcı çakışları arasında en az 3 sn olur; bunu bir kez açıkla.
+        if (this.storm.params.soft && this.clock.wallT - this.softNoteAt > 10) {
+          this.softNoteAt = this.clock.wallT;
+          this.toast('Yumuşak parlama açıkken yıldırımlar en az 3 sn arayla düşer.');
+        }
+        return;
+      }
       if (screen) this.reticle(screen[0], screen[1]);
       if (!auto) this.$('ipucu').classList.add('faded');
     }
@@ -234,15 +266,18 @@
       if (!this.storm.lastReplay) return;
       const prev = this.replaying ? this.replaying.prev : this.clock.timeScale;
       this.setTimeScale(Math.min(this.clock.timeScale, REPLAY_SCALE));
-      if (this.storm.replay()) this.replaying = { id: this.storm.focus.id, prev: prev >= 0.999 ? 1 : prev };
+      if (this.storm.replay(this.clock.timeScale)) {
+        this.replaying = { id: this.storm.focus.id, prev: prev >= 0.999 ? 1 : prev, scale: this.clock.timeScale };
+      }
     }
 
+    // Tekrar bitince önceki hıza dönülür; kullanıcı tekrar sırasında hızı değiştirdiyse onun seçimi korunur.
     endReplay() {
       if (!this.replaying) return;
-      const prev = this.replaying.prev;
+      const { prev, scale } = this.replaying;
       this.replaying = null;
       this.$('tekrar-rozeti').hidden = true;
-      this.setTimeScale(prev);
+      if (this.clock.timeScale === scale) this.setTimeScale(prev);
     }
 
     setTimeScale(s, fromSlider) {
@@ -251,6 +286,7 @@
       this.clock.timeScale = s;
       if (!fromSlider) this.$('zaman-olcegi').value = String(scaleToSlider(s));
       this.$('zaman-deger').textContent = formatScale(s);
+      this.$('zaman-olcegi').setAttribute('aria-valuetext', s >= 0.999 ? 'Gerçek zaman' : `${formatScale(s).slice(1)} hız, ${nf0.format(Math.round(1 / s))} kat yavaş`);
       for (const b of document.querySelectorAll('.presets button')) b.setAttribute('aria-pressed', Math.abs(1 / Number(b.dataset.scale) - s) / s < 0.02 ? 'true' : 'false');
       this.updateRangeFills();
     }
@@ -275,7 +311,10 @@
     }
 
     setMuted(m) {
-      if (!m && !this.audio.ok) { this.audio.init(); this.audio.setRain(this.storm.params.rain); }
+      if (!m && !this.audio.ok) {
+        if (!this.audio.init()) { this.audioUnavailable(); return; }
+        this.audio.setRain(this.storm.params.rain);
+      }
       this.muted = m;
       this.audio.setMuted(m);
       const b = this.$('ses');
@@ -284,12 +323,27 @@
       b.querySelector('use').setAttribute('href', m ? '#i-mute' : '#i-volume');
     }
 
+    // Web Audio yoksa ses düğmesi devre dışı kalır ve durumu açıklar.
+    audioUnavailable() {
+      this.muted = true;
+      const b = this.$('ses');
+      b.disabled = true;
+      b.setAttribute('aria-pressed', 'true');
+      b.setAttribute('aria-label', 'Ses bu tarayıcıda kullanılamıyor');
+      b.title = 'Ses bu tarayıcıda kullanılamıyor';
+      b.querySelector('use').setAttribute('href', '#i-mute');
+      this.$('ses-duzeyi').disabled = true;
+      this.toast('Ses bu tarayıcıda kullanılamıyor.');
+    }
+
     togglePanel(force) {
       const p = this.$('ayarlar'), b = this.$('ayarlar-ac');
       const open = force != null ? force : p.hidden;
+      const hadFocus = p.contains(document.activeElement);
       p.hidden = !open;
       b.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (open) this.$('ayarlar-kapat').focus(); else if (force == null || document.activeElement === document.body) b.focus();
+      if (open) this.$('ayarlar-kapat').focus();
+      else if (hadFocus || force == null || document.activeElement === document.body) b.focus();
     }
 
     toggleUI() {
@@ -348,6 +402,8 @@
       this.canvas.classList.remove('dragging');
       if (this.pointers.size < 2) this.pinch = null;
       if (p && !p.moved && this.started) {
+        // Dar ekranda ayarlar alt sayfa olarak sahneyi örter; sahneye dokunmak önce sayfayı kapatır.
+        if (this.narrow.matches && !this.$('ayarlar').hidden) { this.togglePanel(false); return; }
         const r = this.canvas.getBoundingClientRect();
         this.strikeAtScreen(e.clientX - r.left, e.clientY - r.top);
       }
@@ -359,8 +415,10 @@
     zoom(f) {
       this.cam.fov = M.clamp(this.cam.fov * f, 18 * Math.PI / 180, 68 * Math.PI / 180);
     }
+    // Yatay dönüş, geniş açıda ya da dikey ekranda arazi ağının kenarı görünmeyecek biçimde sınırlanır.
     clampCam() {
-      this.cam.yaw = M.clamp(this.cam.yaw, -0.75, 0.75);
+      const lim = M.yawLimit(T.MESH_HALF, this.renderer.effectiveFov(), this.renderer.aspect(), 0.75);
+      this.cam.yaw = M.clamp(this.cam.yaw, -lim, lim);
       this.cam.pitch = M.clamp(this.cam.pitch, -0.12, 0.5);
     }
 
@@ -379,11 +437,12 @@
       }
       if (inField || e.metaKey || e.ctrlKey || e.altKey) return;
       if (arrows.includes(e.key)) {
-        if (tag === 'BUTTON' && e.target.closest('.segmented')) return;
         this.keysDown.add(e.key);
         e.preventDefault();
         return;
       }
+      // Basılı tutulan tuşun otomatik tekrarı eylemleri yinelemez (yıldırım yağmuru, duraklat titremesi).
+      if (e.repeat) { if (e.key === ' ' && tag !== 'BUTTON') e.preventDefault(); return; }
       const k = e.key.toLowerCase();
       if (e.key === ' ' || e.code === 'Space') {
         if (tag === 'BUTTON') return; // odaktaki düğme kendi eylemini yapar
@@ -453,7 +512,7 @@
       if (ev.kind === 'ic') t1 = tl.end - 0.9;
       else if (ev.kind === 'spider') t1 = tl.glowEnd + 0.15;
       else t1 = Math.max(0.12, tl.strokes[tl.strokes.length - 1].t + (tl.strokes[tl.strokes.length - 1].cc || 0) + 0.08);
-      const t0 = ev.kind === 'ic' ? -0.005 : -0.005;
+      const t0 = -0.005;
       const cv = this.$('isik-egrisi');
       const dpr = Math.min(2, root.devicePixelRatio || 1);
       const W = Math.round(cv.clientWidth * dpr) || 300, H = Math.round(cv.clientHeight * dpr) || 84;
@@ -469,13 +528,13 @@
       g.strokeStyle = this.colors.line; g.lineWidth = 1;
       for (let d = Math.ceil(lo); d <= hi; d++) { const y = yOf(Math.pow(10, d)); g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
       const step = (t1 - t0) > 0.3 ? 0.1 : 0.05;
-      g.fillStyle = this.colors.dim; g.font = `${10 * dpr}px ${cssVar('--font-mono') || 'monospace'}`;
+      g.fillStyle = this.colors.dim; g.font = `${this.curveFontPx * dpr}px ${this.curveFont}`;
       for (let t = 0; t <= t1; t += step) {
         const x = (t - t0) / (t1 - t0) * W;
         g.beginPath(); g.moveTo(x, H - 12 * dpr); g.lineTo(x, H); g.stroke();
       }
       const grad = g.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, 'rgba(245,243,255,0.45)'); grad.addColorStop(1, 'rgba(174,184,255,0.02)');
+      grad.addColorStop(0, this.colors.fillTop); grad.addColorStop(1, this.colors.fillBottom);
       g.beginPath(); g.moveTo(0, H);
       for (let i = 0; i < n; i++) g.lineTo(i / (n - 1) * W, yOf(data[i]));
       g.lineTo(W, H); g.closePath(); g.fillStyle = grad; g.fill();
@@ -501,7 +560,7 @@
       const t = this.clock.simT - ev.tStart;
       if (t >= c.t0 && t <= c.t1) {
         const x = (t - c.t0) / (c.t1 - c.t0) * c.W;
-        g.fillStyle = 'rgba(244,184,96,0.16)';
+        g.fillStyle = this.colors.sodiumSoft;
         g.fillRect(0, 0, x, c.H);
         g.strokeStyle = this.colors.sodium; g.lineWidth = 1.5 * c.dpr;
         g.beginPath(); g.moveTo(x, 0); g.lineTo(x, c.H); g.stroke();
